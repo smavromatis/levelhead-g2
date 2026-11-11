@@ -34,8 +34,8 @@ first.
 
 "Will visual cues help alleviating motion sickness in automated cars?",
 review, Ergonomics, 2023. Visual cues worked better at the edge of vision
-than in the centre. So: the dots sit at the sides and the picture uses the
-full width of the display.
+than in the centre. So: the dots sit at the sides of the picture, away from
+the centre.
 
 ## Delay
 

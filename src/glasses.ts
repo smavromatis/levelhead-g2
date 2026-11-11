@@ -3,8 +3,8 @@
  * and lifecycle.
  *
  * Page (576 x 288): a full-screen empty text container that captures input,
- * a label and a hint line that show briefly, and one or two 288 x 144 images
- * that carry the cue.
+ * a label and a hint line that show briefly, and one 288 x 144 image that
+ * carries the cue.
  */
 import {
   CreateStartUpPageContainer,
@@ -29,11 +29,9 @@ import {
   SCREEN_W,
   TILE_H,
   TILE_W,
-  cueWidth,
-  cueX,
+  CUE_X,
   drawCue,
   viewKey,
-  type Layout,
   type View,
 } from './render'
 
@@ -70,10 +68,7 @@ const TEXT_X = 144
 
 const LABEL = { id: 2, name: 'label' }
 const HINT = { id: 3, name: 'hint' }
-const TILES = [
-  { id: 4, name: 'cue-a' },
-  { id: 5, name: 'cue-b' },
-]
+const CUE = { id: 4, name: 'cue' }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 
@@ -83,10 +78,8 @@ export class GlassesLink {
   private readonly bridge: EvenAppBridge
   private readonly host: GlassesHost
   private queue: Promise<unknown> = Promise.resolve()
-  private layout: Layout = 'focus'
   private loopId = 0
-  private lastKeys = ['', '']
-  private nextTile = 0
+  private lastKey = ''
   private lastFrameAt = 0
   /** Running averages: one send's round trip, and time between sends. */
   private sendMs = 150
@@ -95,19 +88,16 @@ export class GlassesLink {
   private shown = { label: ' ', hint: ' ' }
   private unsubscribers: Array<() => void> = []
   private locating = false
-  private readonly master = document.createElement('canvas')
-  private readonly tile = document.createElement('canvas')
+  private readonly canvas = document.createElement('canvas')
 
   constructor(bridge: EvenAppBridge, host: GlassesHost) {
     this.bridge = bridge
     this.host = host
-    this.tile.width = TILE_W
-    this.tile.height = TILE_H
-    this.master.height = TILE_H
+    this.canvas.width = TILE_W
+    this.canvas.height = TILE_H
   }
 
-  async start(layout: Layout): Promise<boolean> {
-    this.layout = layout
+  async start(): Promise<boolean> {
     const result = await this.call(() =>
       this.bridge.createStartUpPageContainer(new CreateStartUpPageContainer(this.page())),
     )
@@ -135,15 +125,6 @@ export class GlassesLink {
     return true
   }
 
-  /** Switch between one centred image and two spanning the display. */
-  async setLayout(layout: Layout): Promise<void> {
-    if (layout === this.layout) return
-    this.layout = layout
-    await this.call(() => this.bridge.rebuildPageContainer(new RebuildPageContainer(this.page())))
-    this.shown = { label: ' ', hint: ' ' }
-    this.invalidate()
-  }
-
   /**
    * Turn the phone's GPS feed on or off. It is read on the phone itself and
    * needs no network, only the location permission.
@@ -166,7 +147,7 @@ export class GlassesLink {
 
   /** Force the next frame to be sent even if the picture looks unchanged. */
   invalidate(): void {
-    this.lastKeys = ['', '']
+    this.lastKey = ''
   }
 
   /**
@@ -188,7 +169,6 @@ export class GlassesLink {
   // ---------------------------------------------------------------- internals
 
   private page() {
-    const tiles = this.layout === 'wide' ? TILES : TILES.slice(0, 1)
     const text = (
       c: { id: number; name: string },
       y: number,
@@ -212,7 +192,7 @@ export class GlassesLink {
         textColor: brightness,
       })
     return {
-      containerTotalNum: 3 + tiles.length,
+      containerTotalNum: 4,
       textObject: [
         new TextContainerProperty({
           xPosition: 0,
@@ -231,35 +211,37 @@ export class GlassesLink {
         text(LABEL, 16, 40, 2, 3),
         text(HINT, 232, 40, 3, 2),
       ],
-      imageObject: tiles.map(
-        (t, i) =>
-          new ImageContainerProperty({
-            xPosition: cueX(this.layout) + i * TILE_W,
-            yPosition: CUE_Y,
-            width: TILE_W,
-            height: TILE_H,
-            containerID: t.id,
-            containerName: t.name,
-            zOrderIndex: 4 + i,
-          }),
-      ),
+      imageObject: [
+        new ImageContainerProperty({
+          xPosition: CUE_X,
+          yPosition: CUE_Y,
+          width: TILE_W,
+          height: TILE_H,
+          containerID: CUE.id,
+          containerName: CUE.name,
+          zOrderIndex: 4,
+        }),
+      ],
     }
   }
 
   /** Bridge calls share one BLE link and must not overlap. Each is queued, with a timeout. */
   private call<T>(fn: () => Promise<T>): Promise<T | undefined> {
     const run = async (): Promise<T | undefined> => {
+      let timer: ReturnType<typeof setTimeout> | undefined
       try {
         return await Promise.race([
           fn(),
-          sleep(CALL_TIMEOUT_MS).then(() => {
-            throw new Error('bridge call timed out')
+          new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new Error('bridge call timed out')), CALL_TIMEOUT_MS)
           }),
         ])
       } catch (e) {
         this.stats.failures++
         console.warn('[levelhead]', e)
         return undefined
+      } finally {
+        clearTimeout(timer)
       }
     }
     const next = this.queue.then(run, run)
@@ -283,6 +265,102 @@ export class GlassesLink {
     )
   }
 
+  /**
+   * Time the glasses' update paths, one after another, and report each. Used
+   * to find out what this hardware can actually do before choosing how to
+   * draw. Stops the normal display while it runs.
+   */
+  async speedTest(report: (line: string) => void): Promise<void> {
+    this.loopId++
+    clearTimeout(this.chromeTimer)
+    const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)]
+    const capture = new TextContainerProperty({
+      xPosition: 0, yPosition: 0, width: SCREEN_W, height: SCREEN_H, borderWidth: 0, borderColor: 0,
+      paddingLength: 0, containerID: 1, containerName: 'capture', content: ' ', isEventCapture: 1,
+    })
+    try {
+      const cases: Array<[number, number, boolean]> = [
+        [288, 144, false], [288, 144, true], [288, 72, true], [200, 64, true],
+        [144, 48, true], [96, 32, true], [64, 32, true], [40, 20, true],
+      ]
+      for (const [w, h, plain] of cases) {
+        const image = new ImageContainerProperty({
+          xPosition: (SCREEN_W - w) / 2, yPosition: (SCREEN_H - h) / 2, width: w, height: h,
+          containerID: 2, containerName: 'test',
+        })
+        await this.call(() =>
+          this.bridge.rebuildPageContainer(
+            new RebuildPageContainer({ containerTotalNum: 2, textObject: [capture], imageObject: [image] }),
+          ),
+        )
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })!
+        const times: number[] = []
+        const encode: number[] = []
+        let failed = 0
+        for (let i = 0; i < 9; i++) {
+          ctx.fillStyle = '#000'
+          ctx.fillRect(0, 0, w, h)
+          ctx.strokeStyle = '#fff'
+          ctx.lineWidth = 3
+          ctx.beginPath()
+          ctx.moveTo(0, (h * (i + 1)) / 10)
+          ctx.lineTo(w, h - (h * (i + 1)) / 10)
+          ctx.stroke()
+          if (plain) flatten(ctx, w, h)
+          const e0 = performance.now()
+          const png = await encodePng(canvas)
+          encode.push(performance.now() - e0)
+          const t0 = performance.now()
+          const r = await this.call(() =>
+            this.bridge.updateImageRawData(
+              new ImageRawDataUpdate({ containerID: 2, containerName: 'test', imageData: png }),
+            ),
+          )
+          if (r !== ImageRawDataUpdateResult.success) failed++
+          if (i > 0) times.push(performance.now() - t0)
+        }
+        const ms = median(times)
+        report(
+          `${plain ? 'Plain' : 'Soft'} image ${w}x${h}: ${ms.toFixed(0)} ms send, ${median(encode).toFixed(0)} ms to prepare${failed ? `, ${failed} failed` : ''}`,
+        )
+      }
+
+      for (const [label, length] of [['short', 12], ['one line', 45], ['full screen', 400]] as const) {
+        const text = new TextContainerProperty({
+          xPosition: 0, yPosition: 0, width: SCREEN_W, height: SCREEN_H, borderWidth: 0, borderColor: 0,
+          paddingLength: 4, containerID: 1, containerName: 'capture', content: ' ', isEventCapture: 1,
+        })
+        await this.call(() =>
+          this.bridge.rebuildPageContainer(new RebuildPageContainer({ containerTotalNum: 1, textObject: [text] })),
+        )
+        const times: number[] = []
+        for (let i = 0; i < 9; i++) {
+          const content = Array.from({ length }, (_, k) => ((k + i) % 7 === 0 ? ' ' : '▁─▔'[(k + i) % 3])).join('')
+          const t0 = performance.now()
+          await this.call(() =>
+            this.bridge.textContainerUpgrade(
+              new TextContainerUpgrade({ containerID: 1, containerName: 'capture', contentOffset: 0, contentLength: 0, content }),
+            ),
+          )
+          if (i > 0) times.push(performance.now() - t0)
+        }
+        const ms = median(times)
+        report(`Text, ${label}: ${ms.toFixed(0)} ms, ${(1000 / ms).toFixed(1)} per second`)
+      }
+
+      const t0 = performance.now()
+      await this.call(() => this.bridge.rebuildPageContainer(new RebuildPageContainer(this.page())))
+      report(`Page rebuild: ${(performance.now() - t0).toFixed(0)} ms`)
+    } finally {
+      this.shown = { label: ' ', hint: ' ' }
+      await this.call(() => this.bridge.rebuildPageContainer(new RebuildPageContainer(this.page())))
+      await this.resume()
+    }
+  }
+
   private async resume(): Promise<void> {
     await this.call(() => this.bridge.imuControl(true, ImuReportPace.P100))
     // The host stops location updates while the WebView is suspended.
@@ -300,54 +378,40 @@ export class GlassesLink {
   private async loop(id: number): Promise<void> {
     while (id === this.loopId) {
       const sent = await this.frame()
-      // After a send, go again at once; otherwise check back shortly.
-      await sleep(sent ? 0 : IDLE_POLL_MS)
+      // After a send, go again at once (no timer: timers are slow in the
+      // host's WebView); otherwise check back shortly.
+      if (!sent) await sleep(IDLE_POLL_MS)
     }
   }
 
   /**
-   * Send one tile, drawn for when it will be seen: one send from now, plus
+   * Send the picture, drawn for when it will be seen: one send from now, plus
    * half the time it then stays on screen. Returns false if nothing changed.
    */
   private async frame(): Promise<boolean> {
-    const layout = this.host.getView(0).layout
-    const count = layout === 'wide' ? 2 : 1
-    const leadMs = Math.min(SENSOR_TRIP_MS + this.sendMs + (count * this.periodMs) / 2, MAX_LEAD_MS)
+    const leadMs = Math.min(SENSOR_TRIP_MS + this.sendMs + this.periodMs / 2, MAX_LEAD_MS)
     const view = this.host.getView(leadMs / 1000)
     const key = viewKey(view)
-    let index = -1
-    for (let n = 0; n < count; n++) {
-      const i = (this.nextTile + n) % count
-      if (this.lastKeys[i] !== key) {
-        index = i
-        break
-      }
-    }
-    if (index < 0) {
+    if (key === this.lastKey) {
       // Nothing moving: forget the cadence so it is re-measured afresh.
       this.lastFrameAt = 0
       return false
     }
-    this.nextTile = (index + 1) % count
-    this.lastKeys[index] = key
+    this.lastKey = key
 
     const started = performance.now()
-    const width = cueWidth(view.layout)
-    if (this.master.width !== width) this.master.width = width
-    drawCue(this.master.getContext('2d')!, view)
-    this.tile
-      .getContext('2d')!
-      .drawImage(this.master, index * TILE_W, 0, TILE_W, TILE_H, 0, 0, TILE_W, TILE_H)
-    const png = await encodePng(this.tile)
-    const t = TILES[index]
+    const ctx = this.canvas.getContext('2d', { willReadFrequently: true })!
+    drawCue(ctx, view)
+    flatten(ctx, TILE_W, TILE_H)
+    const png = await encodePng(this.canvas)
     const result = await this.call(() =>
       this.bridge.updateImageRawData(
-        new ImageRawDataUpdate({ containerID: t.id, containerName: t.name, imageData: png }),
+        new ImageRawDataUpdate({ containerID: CUE.id, containerName: CUE.name, imageData: png }),
       ),
     )
     if (result !== ImageRawDataUpdateResult.success) {
       // Make sure a dropped frame is retried rather than left stale.
-      this.lastKeys[index] = ''
+      this.lastKey = ''
       if (result !== undefined) console.warn('[levelhead] image update:', result)
     }
 
@@ -415,6 +479,21 @@ export class GlassesLink {
     void this.bridge.stopAppLocationUpdates().catch(() => {})
     for (const off of this.unsubscribers.splice(0)) off()
   }
+}
+
+/**
+ * Snap every pixel to one of four brightness levels. Soft edges turn into
+ * long runs of identical pixels, which compress far better on the way to the
+ * glasses; a smaller packet can mean a shorter send.
+ */
+function flatten(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  const image = ctx.getImageData(0, 0, w, h)
+  const px = image.data
+  for (let i = 0; i < px.length; i += 4) {
+    const level = Math.round(px[i] / 85) * 85
+    px[i] = px[i + 1] = px[i + 2] = level
+  }
+  ctx.putImageData(image, 0, 0)
 }
 
 /** The host accepts encoded images and does its own 4-bit conversion. */

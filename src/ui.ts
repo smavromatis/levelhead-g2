@@ -12,7 +12,7 @@ import {
   type MotionEngine,
   type Vec3,
 } from './motion'
-import { CUE_Y, SCREEN_H, SCREEN_W, cueX, drawCue, type View } from './render'
+import { CUE_X, CUE_Y, SCREEN_H, SCREEN_W, drawCue, type View } from './render'
 import type { Settings } from './settings'
 
 export interface Status {
@@ -33,6 +33,8 @@ export interface UIHost {
   status(): Status
   /** False when there are no glasses to read from. */
   canCalibrate(): boolean
+  /** Time the glasses' update paths; calls back with one line per result. */
+  speedTest(report: (line: string) => void): Promise<void>
   isDemo(): boolean
   diagnostics(): { link: string; battery: string; gps: string; gpsNote: string }
 }
@@ -79,6 +81,19 @@ export class UI {
     })
     $('calib-cancel').addEventListener('click', () => (this.abort ? this.abort() : this.showIdle()))
     $('calib-retry').addEventListener('click', () => void this.calibrate())
+    $('speed-run').addEventListener('click', async () => {
+      const button = $<HTMLButtonElement>('speed-run')
+      const out = $('speed-out')
+      button.disabled = true
+      out.textContent = 'Running, about 20 seconds. Watch the glasses.\n'
+      try {
+        await this.host.speedTest((line) => (out.textContent += line + '\n'))
+        out.textContent += 'Done.'
+      } catch (e) {
+        out.textContent += `Stopped: ${e instanceof Error ? e.message : e}`
+      }
+      button.disabled = false
+    })
     const info = $<HTMLDialogElement>('info')
     $('info-open').addEventListener('click', () => {
       info.showModal()
@@ -94,7 +109,7 @@ export class UI {
   sync(): void {
     const s = this.host.settings
     for (const group of document.querySelectorAll<HTMLElement>('[data-setting]')) {
-      const current = String(s[group.dataset.setting as 'mode' | 'intensity' | 'layout'])
+      const current = String(s[group.dataset.setting as 'mode' | 'intensity'])
       for (const b of group.querySelectorAll('button')) {
         b.setAttribute('aria-checked', String(b.dataset.value === current))
       }
@@ -184,7 +199,7 @@ export class UI {
         this.drawPoseGauge(ctx)
       } else {
         ctx.save()
-        ctx.translate(cueX(view.layout), CUE_Y)
+        ctx.translate(CUE_X, CUE_Y)
         drawCue(ctx, view)
         ctx.restore()
       }
@@ -193,7 +208,7 @@ export class UI {
         : view.active
           ? this.host.isDemo()
             ? 'Pretend motion'
-            : 'Live from your glasses'
+            : `Live: ${this.host.diagnostics().link}`
           : 'Glasses are showing nothing'
       requestAnimationFrame(tick)
     }

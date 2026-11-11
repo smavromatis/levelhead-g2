@@ -32,21 +32,21 @@ let calibrating = false
 const forceDemo = new URLSearchParams(location.search).has('demo')
 const demoOn = () => settings.demo || forceDemo || !link
 
-const sensing = () =>
-  engine.calib !== null && engine.isLive(performance.now()) && device?.isWearing !== false
+// The glasses' own "being worn" flag is not used: on hardware it reported
+// "off" while they were on. Fresh motion data is the test instead.
+const sensing = () => engine.calib !== null && engine.isLive(performance.now())
 
 function getView(aheadS = 0): View {
   const demo = demoOn()
   return {
     mode: settings.mode,
-    layout: settings.layout,
     intensity: settings.intensity,
     state: demo
       ? demoState(settings.mode, performance.now() / 1000 + aheadS)
       : // Count from the newest reading, however long ago it arrived.
         engine.stateAt(aheadS + Math.min(performance.now() - engine.lastSampleAt, 300) / 1000),
     // A frozen or guessed horizon would be a false reference, so the cue is
-    // only drawn from fresh data, and never while the glasses are off.
+    // only drawn from fresh data.
     active: !calibrating && (demo || sensing()),
   }
 }
@@ -83,9 +83,6 @@ function status(): Status {
       detail: 'Put the glasses on and sit still. Takes about ten seconds. Do it before you set off: it is remembered.',
     }
   }
-  if (device?.isWearing === false) {
-    return { tone: 'off', text: 'Paused while the glasses are off', detail: 'It starts again when you put them on.' }
-  }
   if (!engine.isLive(performance.now())) {
     return { tone: 'warn', text: 'Waiting for the glasses', detail: 'They are not sending motion yet, so they show nothing.' }
   }
@@ -108,7 +105,6 @@ function change(patch: Partial<Settings>): void {
   settings = { ...settings, ...patch }
   if (settings.mode !== before.mode) engine.setMode(settings.mode)
   if (settings.calib !== before.calib) engine.setCalibration(settings.calib)
-  if (settings.layout !== before.layout) void link?.setLayout(settings.layout)
   syncLocation()
   store.save(settings)
   link?.invalidate()
@@ -166,6 +162,11 @@ const ui = new UI({
   isDemo: demoOn,
   status,
   canCalibrate: () => link !== null && !settings.demo && !forceDemo,
+  async speedTest(report) {
+    if (!link) return report('No glasses connected.')
+    await link.speedTest(report)
+    report(`Motion readings: ${engine.rateHz.toFixed(1)} per second`)
+  },
   diagnostics() {
     const stats = link?.stats
     const now = performance.now()
@@ -203,7 +204,7 @@ async function attach(bridge: EvenAppBridge): Promise<void> {
       device = next
     },
   })
-  if (!(await glasses.start(settings.layout))) return
+  if (!(await glasses.start())) return
   link = glasses
   device = (await bridge.getDeviceInfo().catch(() => null))?.status ?? null
   syncLocation()

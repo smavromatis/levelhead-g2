@@ -4,27 +4,24 @@
  */
 import type { Mode, MotionState } from './motion'
 
-export type Layout = 'focus' | 'wide'
 export type Intensity = 0 | 1 | 2
 
 export interface View {
   mode: Mode
-  layout: Layout
   intensity: Intensity
   state: MotionState
   /** False when there is nothing trustworthy to draw (not calibrated). */
   active: boolean
 }
 
-/** Image containers are capped at 288 x 144; "wide" tiles two side by side. */
+/** One image container, at the SDK's maximum size, centred on the display. */
 export const TILE_W = 288
 export const TILE_H = 144
 export const SCREEN_W = 576
 export const SCREEN_H = 288
 export const CUE_Y = (SCREEN_H - TILE_H) / 2
 
-export const cueWidth = (layout: Layout) => (layout === 'wide' ? TILE_W * 2 : TILE_W)
-export const cueX = (layout: Layout) => (SCREEN_W - cueWidth(layout)) / 2
+export const CUE_X = (SCREEN_W - TILE_W) / 2
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 const smooth = (edge0: number, edge1: number, x: number) => {
@@ -79,15 +76,15 @@ export function viewKey(view: View): string {
   if (!view.active) return 'off'
   const g = geometry(view)
   return view.mode === 'ship'
-    ? `s${view.layout}${(g.angle * 120).toFixed(0)}:${g.lift.toFixed(0)}`
-    : `c${view.layout}${g.dx.toFixed(0)}:${g.dy.toFixed(0)}`
+    ? `s${(g.angle * 120).toFixed(0)}:${g.lift.toFixed(0)}`
+    : `c${g.dx.toFixed(0)}:${g.dy.toFixed(0)}`
 }
 
 type Ctx = CanvasRenderingContext2D
 
-/** Paint the cue into a `cueWidth(layout)` x `TILE_H` area at the origin. */
+/** Paint the cue into a `TILE_W` x `TILE_H` area at the origin. */
 export function drawCue(ctx: Ctx, view: View): void {
-  const w = cueWidth(view.layout)
+  const w = TILE_W
   const h = TILE_H
   ctx.save()
   ctx.fillStyle = '#000'
@@ -97,18 +94,22 @@ export function drawCue(ctx: Ctx, view: View): void {
     ctx.rect(0, 0, w, h)
     ctx.clip()
     const g = geometry(view)
-    if (view.mode === 'ship') drawHorizon(ctx, w, h, g, view.layout)
-    else drawDots(ctx, w, h, g, view.layout)
+    if (view.mode === 'ship') drawHorizon(ctx, w, h, g)
+    else drawDots(ctx, w, h, g)
   }
   ctx.restore()
 }
 
 /** Ship: a horizon line that stays level with the real one. The centre is left open. */
-function drawHorizon(ctx: Ctx, w: number, h: number, g: Geometry, layout: Layout): void {
+function drawHorizon(ctx: Ctx, w: number, h: number, g: Geometry): void {
   const cx = w / 2
   const cy = h / 2
-  const gap = layout === 'wide' ? 64 : 30
-  const reach = w / 2 + 40
+  const gap = 30
+  // Stop the line short of the top and bottom of the picture when it is
+  // steeply tilted, so it fades out instead of being cut off.
+  const steep = Math.abs(Math.sin(g.angle))
+  const room = h / 2 - 8 - Math.abs(g.lift)
+  const reach = Math.max(gap + 24, Math.min(w / 2, steep > 1e-3 ? room / steep : Infinity))
 
   ctx.save()
   ctx.translate(cx, cy + g.lift)
@@ -116,10 +117,11 @@ function drawHorizon(ctx: Ctx, w: number, h: number, g: Geometry, layout: Layout
   ctx.lineCap = 'round'
 
   for (const side of [-1, 1]) {
-    // Brightest beside the gap, easing off toward the edge of the display.
-    const fade = ctx.createLinearGradient(side * gap, 0, side * (w / 2), 0)
+    // Brightest beside the gap, fading to nothing at its end.
+    const fade = ctx.createLinearGradient(side * gap, 0, side * reach, 0)
     fade.addColorStop(0, grey(1))
-    fade.addColorStop(1, grey(0.45))
+    fade.addColorStop(0.7, grey(0.6))
+    fade.addColorStop(1, grey(0))
     ctx.strokeStyle = fade
     ctx.lineWidth = 3
     ctx.beginPath()
@@ -130,7 +132,7 @@ function drawHorizon(ctx: Ctx, w: number, h: number, g: Geometry, layout: Layout
     // Short ticks on the water side, so "down" reads at a glance.
     ctx.strokeStyle = grey(0.4)
     ctx.lineWidth = 2
-    for (let x = gap + 22; x < reach; x += 44) {
+    for (let x = gap + 22; x < reach - 20; x += 44) {
       ctx.beginPath()
       ctx.moveTo(side * x, 7)
       ctx.lineTo(side * x, 14)
@@ -142,12 +144,12 @@ function drawHorizon(ctx: Ctx, w: number, h: number, g: Geometry, layout: Layout
 }
 
 /** Car: dots at the sides that slide against each turn, pull-away and brake. */
-function drawDots(ctx: Ctx, w: number, h: number, g: Geometry, layout: Layout): void {
+function drawDots(ctx: Ctx, w: number, h: number, g: Geometry): void {
   const cx = w / 2
   const cy = h / 2
   const stepX = 48
   const stepY = 40
-  const clear = layout === 'wide' ? 130 : 60
+  const clear = 60
   const edge = 18
 
   const cols = Math.ceil(w / 2 / stepX) + 1

@@ -1,11 +1,10 @@
 import type { EvenAppBridge } from '@evenrealities/even_hub_sdk'
 import { isCalibration, type Calibration, type Mode } from './motion'
-import type { Intensity, Layout } from './render'
+import type { Intensity } from './render'
 
 export interface Settings {
   mode: Mode
   intensity: Intensity
-  layout: Layout
   /** Drive the cue from synthetic motion instead of the glasses' sensor. */
   demo: boolean
   calib: Calibration | null
@@ -14,7 +13,6 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   mode: 'ship',
   intensity: 1,
-  layout: 'wide',
   demo: false,
   calib: null,
 }
@@ -30,7 +28,6 @@ function parse(json: string): Settings {
     return {
       mode: pick(o.mode, ['ship', 'car'] as const, DEFAULTS.mode),
       intensity: pick(o.intensity, [0, 1, 2] as const, DEFAULTS.intensity),
-      layout: pick(o.layout, ['focus', 'wide'] as const, DEFAULTS.layout),
       demo: o.demo === true,
       calib: isCalibration(o.calib) ? o.calib : null,
     }

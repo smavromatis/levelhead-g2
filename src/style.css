@@ -507,6 +507,16 @@ h1 {
   margin-top: 16px;
 }
 
+pre.footnote {
+  margin: 0;
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 [hidden] {
   display: none !important;
 }

@@ -129,7 +129,14 @@ export class Predictor {
    */
   at(aheadS: number, samplePeriodS = 0.1): number {
     const { p, hist, est } = this
-    if (aheadS <= 0 || hist.length < p || this.trust === 0) return est
+    if (aheadS <= 0 || hist.length < p) return est
+    const limit = this.maxRate * aheadS
+    if (this.trust === 0) {
+      // Not forecasting (the head just moved). Carry on in a straight line
+      // from the last two samples so the picture keeps gliding between them.
+      const rate = (hist[hist.length - 1] - hist[hist.length - 2]) / Math.max(samplePeriodS, 0.02)
+      return est + Math.max(-limit, Math.min(limit, rate * Math.min(aheadS, 0.3)))
+    }
     const w = hist.slice(-p)
     w[p - 1] = est
     const steps = aheadS / Math.max(samplePeriodS, 0.02)
@@ -143,7 +150,6 @@ export class Predictor {
       w.push(after)
     }
     const value = before + (after - before) * (steps - (whole - 1))
-    const limit = this.maxRate * aheadS
     return est + Math.max(-limit, Math.min(limit, (value - est) * this.trust))
   }
 }
