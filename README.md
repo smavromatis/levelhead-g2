@@ -20,6 +20,6 @@ npm run dev
 npm run sim:demo
 ```
 
-## More
+## Research
 
-How it works and what it is based on: [docs/notes.md](docs/notes.md)
+What it is based on: [docs/notes.md](docs/notes.md)
