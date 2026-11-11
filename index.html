@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Levelhead</title>
+  </head>
+  <body>
+    <main class="app">
+      <header class="nav">
+        <h1>Levelhead</h1>
+        <button class="link" id="info-open">Help</button>
+      </header>
+
+      <div class="segmented" role="radiogroup" aria-label="Mode" data-setting="mode">
+        <button role="radio" data-value="ship">Ship</button>
+        <button role="radio" data-value="car">Car</button>
+      </div>
+      <p class="footnote" id="mode-help"></p>
+
+      <figure class="lens">
+        <canvas id="preview" width="576" height="288" aria-label="What your glasses are showing"></canvas>
+        <figcaption id="preview-tag"></figcaption>
+      </figure>
+
+      <section id="now" data-tone="off" aria-live="polite">
+        <div id="now-idle">
+          <div class="group">
+            <div class="cell"><span id="now-text"></span><i class="lamp"></i></div>
+          </div>
+          <p class="footnote" id="now-detail"></p>
+          <button class="filled" id="now-primary"></button>
+        </div>
+
+        <div id="now-calibrating" hidden>
+          <div class="group pad">
+            <ol class="steps" id="calib-steps">
+              <li>Level</li>
+              <li>Tilt right</li>
+              <li>Chin down</li>
+            </ol>
+            <p class="prompt" id="calib-prompt"></p>
+            <p class="footnote" id="calib-note"></p>
+            <div class="progress"><div id="calib-bar"></div></div>
+          </div>
+          <button class="filled" id="calib-retry" hidden>Try Again</button>
+          <button class="link wide" id="calib-cancel">Cancel</button>
+        </div>
+      </section>
+
+      <div class="group" data-for-mode="car">
+        <div class="cell">
+          <span id="strength-label">Strength</span>
+          <span class="trailing">
+            <output id="strength-name"></output>
+            <span class="stepper" role="group" aria-labelledby="strength-label">
+              <button id="weaker" aria-label="Gentler">−</button>
+              <button id="stronger" aria-label="Stronger">+</button>
+            </span>
+          </span>
+        </div>
+      </div>
+      <p class="footnote" id="gps-note" data-for-mode="car"></p>
+
+      <details class="more">
+        <summary class="group"><span class="cell"><span>More</span><i class="chevron"></i></span></summary>
+        <div class="group">
+          <div class="cell">
+            <span>Head Positions</span>
+            <button class="link" id="now-secondary">Set Up Again</button>
+          </div>
+          <div class="cell">
+            <span id="width-label">Picture</span>
+            <div class="segmented small" role="radiogroup" aria-labelledby="width-label" data-setting="layout">
+              <button role="radio" data-value="wide">Full</button>
+              <button role="radio" data-value="focus">Centre</button>
+            </div>
+          </div>
+          <label class="cell">
+            <span>Pretend Motion</span>
+            <input type="checkbox" data-toggle="demo" />
+          </label>
+        </div>
+        <p class="footnote">Pretend motion shows a made-up sea or drive, to see what it looks like.</p>
+        <dl class="group readings">
+          <div class="cell"><dt>Motion readings</dt><dd id="d-rate">–</dd></div>
+          <div class="cell"><dt>Raw x, y, z</dt><dd id="d-raw">–</dd></div>
+          <div class="cell"><dt>Tilt side, forward</dt><dd id="d-angles">–</dd></div>
+          <div class="cell"><dt>Turning, speeding up</dt><dd id="d-accel">–</dd></div>
+          <div class="cell"><dt>Speed from location</dt><dd id="d-gps">–</dd></div>
+          <div class="cell"><dt>Pictures sent</dt><dd id="d-link">–</dd></div>
+          <div class="cell"><dt>Glasses battery</dt><dd id="d-battery">–</dd></div>
+        </dl>
+      </details>
+
+      <p class="footnote warning">
+        Proof of concept, not a medical device. It may not help and could make you feel worse. Use
+        at your own risk. Never use while driving.
+      </p>
+    </main>
+
+    <dialog class="info" id="info" aria-labelledby="info-title">
+      <header>
+        <h2 id="info-title">Help</h2>
+        <button class="link" id="info-close">Done</button>
+      </header>
+
+      <article>
+        <h3>Which mode</h3>
+        <p><b>Ship</b> is for boats and ferries, when you cannot see the horizon.</p>
+        <p>It shows a line that stays level with the horizon. Rest your eyes near it.</p>
+        <p><b>Car</b> is for passengers in cars, buses and trains who cannot watch the road.</p>
+        <p>It shows dots at the sides that move with each turn and brake.</p>
+
+        <h3 class="warning">Warnings</h3>
+        <ul class="warning">
+          <li>Never use it while driving.</li>
+          <li>Do not use it on a plane. The line is wrong when the plane turns.</li>
+          <li>If you feel worse, take the glasses off and look far away.</li>
+          <li>
+            This is a proof of concept, not a medical device. It may not help, and it could make
+            you feel worse. You use it at your own risk.
+          </li>
+        </ul>
+
+        <h3>Does it work?</h3>
+        <p>
+          <b>Ship:</b> in studies, a level horizon line reduced seasickness. It did not cure it.
+        </p>
+        <p>
+          <b>Car:</b> the evidence is weaker. If you can look at the road ahead, do that first.
+        </p>
+        <p class="why">
+          Studies: Tal 2012, Hemmerich 2020 (ship). de Winkel 2021 (car). Nobody has tested this
+          app itself.
+        </p>
+
+        <h3>Tips</h3>
+        <ul>
+          <li>Look at the real horizon or the road when you can.</li>
+          <li>Face the way you are travelling.</li>
+          <li>Breathe slowly.</li>
+          <li>You can move your head. A quick move makes the picture wobble for a second.</li>
+        </ul>
+
+        <h3>On the glasses</h3>
+        <dl class="group readings">
+          <div class="cell"><dt>Tap</dt><dd>Switch Ship and Car</dd></div>
+          <div class="cell"><dt>Swipe</dt><dd>Stronger or gentler (Car)</dd></div>
+          <div class="cell"><dt>Press and hold</dt><dd>Re-level</dd></div>
+          <div class="cell"><dt>Double tap</dt><dd>Close</dd></div>
+        </dl>
+
+        <h3>Buttons</h3>
+        <ul>
+          <li><b>Set Up:</b> do it once, sitting still, before you set off. It is remembered.</li>
+          <li><b>Re-level:</b> if the picture sits crooked, keep your head straight for a few seconds, then tap it.</li>
+          <li><b>Strength:</b> how far the dots move. Car only. The ship line always matches the real horizon.</li>
+        </ul>
+        <p>Car mode uses your phone's location to tell the car's movement from your head's.</p>
+        <p>Everything works without phone signal.</p>
+      </article>
+    </dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "levelhead",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "sim": "evenhub-simulator http://localhost:5173",
+    "sim:demo": "evenhub-simulator \"http://localhost:5173/?demo\"",
+    "qr": "evenhub qr --port 5173",
+    "pack": "npm run build && evenhub pack app.json dist -o levelhead.ehpk"
+  },
+  "devDependencies": {
+    "@evenrealities/evenhub-cli": "^0.2.0",
+    "@evenrealities/evenhub-simulator": "^0.9.5",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.6"
+  },
+  "dependencies": {
+    "@evenrealities/even_hub_sdk": "^0.0.16"
+  }
+}
