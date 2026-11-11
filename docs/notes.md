@@ -48,9 +48,3 @@ is drawn for the moment it will be seen, not the moment it was computed.
 simulator sickness in a helmet mounted display", Displays. Delay that varied
 caused more sickness than delay that stayed constant. So: pictures are sent
 at a steady pace.
-
-## Limits
-
-Nobody has tested this app on people. Car mode has weaker support than ship
-mode. Every timing and accuracy figure so far comes from simulation; the app
-has not been run on real glasses.
